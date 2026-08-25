@@ -105,12 +105,24 @@ best size — that is the honest number.
 
 | | |
 |---|---|
+| **Player props** | MLB: hits, home runs, H+R+RBI, RBIs, total bases, stolen bases, strikeouts, outs recorded, hits allowed, earned runs, walks allowed. NFL: pass/rush/receiving yards, receptions, passing TDs. NBA & WNBA: points, rebounds, assists, threes (plus PRA on NBA). NHL: points, assists, saves |
 | **Two-way moneyline** | MLB, NFL, NBA, NHL, WNBA, NCAAF, NCAAB, CFL, ATP, WTA |
 | **Three-way (win / draw)** | Premier League, La Liga, Serie A, Ligue 1, Bundesliga, MLS, Champions League, Europa League |
-| **Spreads and totals** | every league above that lists them on both venues |
+| **Spreads, totals, team totals** | every league above that lists them on both venues |
 
-Leagues are only scanned when Novig actually has open fixtures for them, so the scan shrinks and
-grows with the sporting calendar.
+**Baseball props are the richest hunting ground**, for two reasons. Both books quote integer
+stats on the same `.5` lines, so they compare exactly — Kalshi phrases it as "1+ hits" but
+reports the strike as 0.5, which is precisely Novig's line. And Kalshi's MLB series carry a
+**0.5× fee multiplier**, halving the cost that usually eats the edge. Locks show up on props
+that never appear on game lines.
+
+Props only pair when the stat, the player and the strike all agree. Around half of Kalshi's
+MLB prop markets have no Novig counterpart at the same number — Kalshi posts a ladder
+(1+, 2+, 3+…) where Novig posts one or two lines per player — and that is a real limit, not a
+matching failure.
+
+Leagues are only scanned when Novig actually has open fixtures, and a series that comes back
+empty rests for a while before being checked again, so an out-of-season sport costs nothing.
 
 ## Configuration
 
@@ -124,6 +136,8 @@ All optional, all environment variables:
 | `NEAR_MISS_EDGE` | `-0.02` | Screen-in threshold; pairs below this are not order-book priced |
 | `KALSHI_FEE_COEFFICIENT` | `0.07` | Kalshi's quadratic coefficient |
 | `NOVIG_FEE_COEFFICIENT` | `0.03` | Novig's live taker coefficient |
+| `KALSHI_CONCURRENCY` | `6` | Kalshi series fetched in parallel |
+| `KALSHI_DORMANT_CYCLES` | `20` | Cycles to rest a series that returned nothing |
 | `BOARD_LIMIT` | `500` | Odds-feed rows sent to the browser |
 
 ```bash
@@ -153,6 +167,12 @@ a team by identity — never by position. That is what keeps a home/away disagre
 inverting a leg, which would turn a "lock" into two bets on the same outcome.
 
 Each row shows its match confidence in the bet slip. Anything below 70% is discarded.
+
+**Players are matched on the full name only.** A first-initial-plus-surname fallback would
+look tempting — it rescues a handful of extra props — but the Cubs and Brewers field
+`Willson Contreras` and `William Contreras`, brothers who both catch. Pairing them would
+produce a confident-looking "lock" that is really two bets on two different people. Missing a
+prop costs nothing; inventing one costs money, so the strict key stays.
 
 ## Data sources
 

@@ -144,6 +144,16 @@ const server = http.createServer(async (req, res) => {
   await serveStatic(req, res, url.pathname);
 });
 
+server.on('error', (err) => {
+  if (err.code === 'EADDRINUSE') {
+    warn(`Port ${config.port} is already in use — Novigarb may already be running.`);
+    warn(`Open http://localhost:${config.port}, or start this one on another port with PORT=8788 node server.js`);
+  } else {
+    warn(`Server error: ${err.message}`);
+  }
+  process.exit(1);
+});
+
 server.listen(config.port, () => {
   log(`Novigarb listening on http://localhost:${config.port}`);
   log(`scanning every ${config.pollMs}ms · anchor leg sized to $${config.targetStake}`);

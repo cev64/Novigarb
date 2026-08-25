@@ -34,6 +34,9 @@ export class Engine extends EventEmitter {
     };
     this.timer = null;
     this.running = false;
+    // Series that came back empty (out of season, or props not posted yet) are rechecked
+    // occasionally rather than every cycle. Value is cycles left to skip.
+    this.dormantSeries = new Map();
   }
 
   start() {
@@ -98,16 +101,31 @@ export class Engine extends EventEmitter {
     // --- 2. Kalshi fixtures for those leagues --------------------------------------
     const seriesJobs = [];
     for (const league of activeLeagues) {
-      for (const kind of ['game', 'spread', 'total']) {
+      for (const kind of ['game', 'spread', 'total', 'teamTotal']) {
         if (league[kind]) seriesJobs.push({ league, kind, seriesTicker: league[kind] });
+      }
+      for (const prop of league.props || []) {
+        seriesJobs.push({ league, kind: 'prop', stat: prop.stat, seriesTicker: prop.series });
       }
     }
 
     await kalshi.loadSeries(seriesJobs.map((j) => j.seriesTicker));
 
-    const fetched = await mapLimit(seriesJobs, 4, async (job) => {
+    const dueJobs = seriesJobs.filter((job) => {
+      const remaining = this.dormantSeries.get(job.seriesTicker) || 0;
+      if (remaining <= 0) return true;
+      this.dormantSeries.set(job.seriesTicker, remaining - 1);
+      return false;
+    });
+    stats.seriesQueried = dueJobs.length;
+    stats.seriesDormant = seriesJobs.length - dueJobs.length;
+
+    const fetched = await mapLimit(dueJobs, config.kalshi.seriesConcurrency, async (job) => {
       try {
-        return { job, fixtures: await kalshi.fetchSeriesFixtures(job.seriesTicker, job.kind) };
+        const fixtures = await kalshi.fetchSeriesFixtures(job.seriesTicker, job.kind, job.stat);
+        if (fixtures.length) this.dormantSeries.delete(job.seriesTicker);
+        else this.dormantSeries.set(job.seriesTicker, config.kalshi.dormantCycles);
+        return { job, fixtures };
       } catch (err) {
         errors.push(`kalshi ${job.seriesTicker}: ${err.message}`);
         return { job, fixtures: [] };
@@ -305,6 +323,8 @@ function emptyStats() {
     kalshiFixtures: 0,
     matchedFixtures: 0,
     novigMarkets: 0,
+    seriesQueried: 0,
+    seriesDormant: 0,
     pairsScreened: 0,
     boardRows: 0,
     candidates: 0,
@@ -347,6 +367,13 @@ function contractLabel(contract, side, pair) {
     const shown = side === 'HOME' ? line : -line;
     const team = side === 'HOME' ? home.name : away.name;
     return `Spread — ${team} ${shown > 0 ? '+' : ''}${shown}`;
+  }
+  if (meta.type === 'teamTotal') {
+    const team = meta.subject === 'home' ? home.name : away.name;
+    return `${team} team total ${meta.strike} — ${side}`;
+  }
+  if (meta.type === 'prop') {
+    return `${meta.player} — ${meta.statLabel} ${side === 'OVER' ? 'over' : 'under'} ${meta.strike}`;
   }
   return contract.key;
 }

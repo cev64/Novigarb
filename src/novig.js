@@ -8,7 +8,7 @@
 //     liquidity to BUY the sibling outcome B at (1 - p). `qty` is in cents of payout,
 //     so 100 qty = 1 contract.
 
-import { config } from './config.js';
+import { config, NOVIG_MARKET_TYPES } from './config.js';
 import { fetchJson, num, chunk, mapLimit, warn } from './util.js';
 
 const ENDPOINT = config.novig.graphql;
@@ -61,8 +61,13 @@ export async function fetchOpenEvents(leagueNames) {
 }
 
 const MARKETS_QUERY = `
-query EventMarkets($eventIds: [uuid!], $types: [String!]) {
-  market(where: {eventId: {_in: $eventIds}, status: {_eq: "OPEN"}, type: {_in: $types}}, limit: 2000) {
+query EventMarkets($eventIds: [uuid!], $types: [String!], $limit: Int!, $offset: Int!) {
+  market(
+    where: {eventId: {_in: $eventIds}, status: {_eq: "OPEN"}, type: {_in: $types}}
+    order_by: {id: asc}
+    limit: $limit
+    offset: $offset
+  ) {
     id
     eventId
     description
@@ -70,6 +75,7 @@ query EventMarkets($eventIds: [uuid!], $types: [String!]) {
     strike
     volume
     competitor { id name symbol }
+    player { id name }
     outcomes {
       id
       index
@@ -82,8 +88,6 @@ query EventMarkets($eventIds: [uuid!], $types: [String!]) {
   }
 }`;
 
-const MARKET_TYPES = ['MONEY', 'SPREAD', 'TOTAL', 'MONEYLINE_3_WAY_WIN', 'MONEYLINE_3_WAY_DRAW'];
-
 /**
  * Markets (with per-outcome ask prices) for a set of event ids. `available` is Novig's
  * current offer price for that outcome, i.e. 1 - best bid on its sibling.
@@ -91,14 +95,30 @@ const MARKET_TYPES = ['MONEY', 'SPREAD', 'TOTAL', 'MONEYLINE_3_WAY_WIN', 'MONEYL
 export async function fetchMarkets(eventIds) {
   const batches = chunk(eventIds, config.novig.eventsPerMarketQuery);
 
+  const { marketPageSize, maxMarketPages } = config.novig;
+
   const results = await mapLimit(batches, config.novig.maxConcurrency, async (batch) => {
-    try {
-      const data = await gql(MARKETS_QUERY, { eventIds: batch, types: MARKET_TYPES });
-      return data.market || [];
-    } catch (err) {
-      warn(`novig: market batch failed (${err.message})`);
-      return [];
+    // Page until a short page comes back. Prop-heavy fixtures carry a few hundred
+    // markets each, so a single capped query silently drops the tail.
+    const rows = [];
+    for (let page = 0; page < maxMarketPages; page++) {
+      try {
+        const data = await gql(MARKETS_QUERY, {
+          eventIds: batch,
+          types: NOVIG_MARKET_TYPES,
+          limit: marketPageSize,
+          offset: page * marketPageSize,
+        });
+        const batchRows = data.market || [];
+        rows.push(...batchRows);
+        if (batchRows.length < marketPageSize) return rows;
+      } catch (err) {
+        warn(`novig: market page failed (${err.message})`);
+        return rows;
+      }
     }
+    warn(`novig: hit the ${maxMarketPages}-page ceiling for a market batch; some markets may be missing`);
+    return rows;
   });
 
   return results.flat().map((m) => ({
@@ -109,6 +129,7 @@ export async function fetchMarkets(eventIds) {
     strike: num(m.strike),
     volume: num(m.volume) ?? 0,
     competitor: m.competitor || null,
+    player: m.player || null,
     outcomes: (m.outcomes || []).map((o) => ({
       id: o.id,
       index: o.index,

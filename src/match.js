@@ -9,8 +9,10 @@
 //   ML3:HOME|AWAY|DRAW   three-way result      sides YES / NO
 //   TOT:<strike>  game total                   sides OVER / UNDER
 //   SPR:<line>    spread, line signed for home sides HOME / AWAY
+//   TT:<side>:<strike>       team total          sides OVER / UNDER
+//   P:<stat>:<player>:<strike>  player prop      sides OVER / UNDER
 
-import { teamScore, fixtureScore, easternDateKey } from './teams.js';
+import { teamScore, fixtureScore, easternDateKey, playerKey } from './teams.js';
 
 export const COMPLEMENT = { HOME: 'AWAY', AWAY: 'HOME', OVER: 'UNDER', UNDER: 'OVER', YES: 'NO', NO: 'YES' };
 
@@ -32,10 +34,12 @@ export function groupKalshiFixtures(fixtures) {
         home: f.home,
         title: f.title,
         byKind: {},
+        props: [],
       });
     }
     const g = groups.get(key);
-    g.byKind[f.kind] = f;
+    if (f.kind === 'prop') g.props.push(f);
+    else g.byKind[f.kind] = f;
     // The GAME series carries the cleanest team labels.
     if (f.kind === 'game') {
       g.away = f.away;
@@ -233,8 +237,68 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
     }
   }
 
+  // ---- Kalshi team totals ------------------------------------------------------
+  const teamTotalFixture = kg.byKind.teamTotal;
+  if (teamTotalFixture) {
+    for (const m of teamTotalFixture.markets) {
+      if (m.floorStrike === null) continue;
+      // Subtitles read "Miami over 1.5 runs scored"; the team is everything before "over".
+      const subjectText = (m.yesSubTitle || '').replace(/\s+over\s.*$/i, '').trim();
+      const subject = resolveSide({ name: subjectText, abbr: m.suffix }, ne);
+      if (!subject) continue;
+
+      const teamName = subject === 'home' ? homeName : awayName;
+      const key = `TT:${subject.toUpperCase()}:${strikeKey(m.floorStrike)}`;
+      const meta = { type: 'teamTotal', strike: m.floorStrike, subject, label: `${teamName} team total ${m.floorStrike}` };
+      const marketName = m.yesSubTitle || m.title;
+
+      if (m.yesAsk !== null) {
+        addLeg(key, meta, 'OVER', { book: 'kalshi', side: 'yes', marketName, ticker: m.ticker, seriesTicker: teamTotalFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: `${teamName} over ${m.floorStrike}` });
+      }
+      if (m.noAsk !== null) {
+        addLeg(key, meta, 'UNDER', { book: 'kalshi', side: 'no', marketName, ticker: m.ticker, seriesTicker: teamTotalFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: `${teamName} under ${m.floorStrike}` });
+      }
+    }
+  }
+
+  // ---- Kalshi player props -----------------------------------------------------
+  // Both books quote these as over/under on the same `.5` line, so the only things that
+  // must agree are the stat, the player and the strike.
+  const propByStat = new Map((league.props || []).map((p) => [p.stat, p]));
+
+  for (const propFixture of kg.props) {
+    const statLabel = propByStat.get(propFixture.stat)?.label || propFixture.stat;
+
+    for (const m of propFixture.markets) {
+      if (m.floorStrike === null || !m.playerName) continue;
+      const player = playerKey(m.playerName);
+      if (!player) continue;
+
+      const key = `P:${propFixture.stat}:${player.full}:${strikeKey(m.floorStrike)}`;
+      const meta = {
+        type: 'prop',
+        stat: propFixture.stat,
+        statLabel,
+        strike: m.floorStrike,
+        player: m.playerName,
+        playerFull: player.full,
+        playerShort: player.short,
+        label: `${m.playerName} ${m.floorStrike}`,
+      };
+      const marketName = m.yesSubTitle || m.title;
+
+      if (m.yesAsk !== null) {
+        addLeg(key, meta, 'OVER', { book: 'kalshi', side: 'yes', marketName, ticker: m.ticker, seriesTicker: propFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: `${m.playerName} over ${m.floorStrike}` });
+      }
+      if (m.noAsk !== null) {
+        addLeg(key, meta, 'UNDER', { book: 'kalshi', side: 'no', marketName, ticker: m.ticker, seriesTicker: propFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: `${m.playerName} under ${m.floorStrike}` });
+      }
+    }
+  }
+
   // ---- Novig legs --------------------------------------------------------------
   const novigMarkets = novigMarketsByEvent.get(ne.id) || [];
+  const propByNovigType = new Map((league.props || []).map((p) => [p.novig, p]));
 
   for (const m of novigMarkets) {
     // Outcome sidedness comes from `index`, never array order.
@@ -275,6 +339,33 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
       key = `SPR:${strikeKey(m.strike)}`;
       sideOfIndex0 = 'HOME';
       meta = { type: 'spread', strike: m.strike, label: `Spread ${m.strike > 0 ? '+' : ''}${m.strike}` };
+    } else if (m.type === 'TEAM_TOTAL' && m.strike !== null) {
+      const subject = m.competitor
+        ? resolveSide({ name: m.competitor.name, abbr: m.competitor.symbol }, ne)
+        : null;
+      if (!subject) continue;
+      const teamName = subject === 'home' ? homeName : awayName;
+      key = `TT:${subject.toUpperCase()}:${strikeKey(m.strike)}`;
+      sideOfIndex0 = 'OVER';
+      meta = { type: 'teamTotal', strike: m.strike, subject, label: `${teamName} team total ${m.strike}` };
+      labels = [`${teamName} over ${m.strike}`, `${teamName} under ${m.strike}`];
+    } else if (propByNovigType.has(m.type) && m.strike !== null && m.player) {
+      const prop = propByNovigType.get(m.type);
+      const player = playerKey(m.player.name);
+      if (!player) continue;
+      key = `P:${prop.stat}:${player.full}:${strikeKey(m.strike)}`;
+      sideOfIndex0 = 'OVER';
+      meta = {
+        type: 'prop',
+        stat: prop.stat,
+        statLabel: prop.label,
+        strike: m.strike,
+        player: m.player.name,
+        playerFull: player.full,
+        playerShort: player.short,
+        label: `${m.player.name} ${m.strike}`,
+      };
+      labels = [`${m.player.name} over ${m.strike}`, `${m.player.name} under ${m.strike}`];
     } else {
       continue;
     }

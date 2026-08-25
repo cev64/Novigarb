@@ -3,6 +3,7 @@
 
 import { config } from './config.js';
 import { fetchJson, num, chunk, mapLimit, warn } from './util.js';
+import { playerFromSubtitle } from './teams.js';
 
 const BASE = config.kalshi.rest;
 
@@ -79,7 +80,9 @@ async function fetchEventPages(seriesTicker) {
     });
     if (cursor) params.set('cursor', cursor);
 
-    const data = await fetchJson(`${BASE}/events?${params}`);
+    // The first cycle warms the series cache and fetches every fixture at once, which
+    // can brush the rate limit; an extra retry rides out that burst.
+    const data = await fetchJson(`${BASE}/events?${params}`, { retries: 3 });
     events.push(...(data.events || []));
     cursor = data.cursor;
     if (!cursor || !(data.events || []).length) break;
@@ -89,9 +92,10 @@ async function fetchEventPages(seriesTicker) {
 
 /**
  * Normalize one Kalshi series into fixtures keyed by event ticker.
- * `kind` is 'game' | 'spread' | 'total' and decides how markets are interpreted later.
+ * `kind` is 'game' | 'spread' | 'total' | 'teamTotal' | 'prop' and decides how markets
+ * are interpreted later. `stat` names the prop when kind is 'prop'.
  */
-export async function fetchSeriesFixtures(seriesTicker, kind) {
+export async function fetchSeriesFixtures(seriesTicker, kind, stat = null) {
   const raw = await fetchEventPages(seriesTicker);
   const fixtures = [];
 
@@ -111,6 +115,8 @@ export async function fetchSeriesFixtures(seriesTicker, kind) {
         suffix: m.ticker.startsWith(`${ev.event_ticker}-`) ? m.ticker.slice(ev.event_ticker.length + 1) : null,
         title: m.title,
         yesSubTitle: m.yes_sub_title,
+        // Prop subtitles read "Adley Rutschman: 1+"; the name is the identity we match on.
+        playerName: kind === 'prop' ? playerFromSubtitle(m.yes_sub_title) : null,
         floorStrike: num(m.floor_strike),
         capStrike: num(m.cap_strike),
         strikeType: m.strike_type,
@@ -130,6 +136,7 @@ export async function fetchSeriesFixtures(seriesTicker, kind) {
     fixtures.push({
       book: 'kalshi',
       kind,
+      stat,
       seriesTicker,
       eventTicker: ev.event_ticker,
       title: ev.title,

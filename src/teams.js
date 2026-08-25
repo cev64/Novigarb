@@ -130,3 +130,35 @@ const EASTERN_DATE = new Intl.DateTimeFormat('en-CA', {
 export function easternDateKey(date) {
   return EASTERN_DATE.format(date);
 }
+
+/**
+ * Identity keys for a player name.
+ *
+ * Matching players wrong is worse than missing them: pairing two different people
+ * produces a "lock" that is really two unrelated bets. So the primary key is the whole
+ * normalized name and must match exactly. `short` (first initial + surname) exists only
+ * as a fallback for abbreviated spellings, and callers must confirm it resolves to a
+ * single candidate on both books before trusting it.
+ *
+ * Accents are stripped, so "Agustín Ramírez" and "Agustin Ramirez" agree; suffixes like
+ * "Jr" are dropped because the books are inconsistent about them.
+ */
+const NAME_SUFFIXES = new Set(['jr', 'sr', 'ii', 'iii', 'iv', 'v']);
+
+export function playerKey(name) {
+  const tokens = tokenize(name).filter((t) => !NAME_SUFFIXES.has(t));
+  if (!tokens.length) return null;
+
+  const full = tokens.join(' ');
+  const surname = tokens[tokens.length - 1];
+  const short = tokens.length > 1 ? `${tokens[0][0]} ${surname}` : surname;
+
+  return { full, short };
+}
+
+/** "Adley Rutschman: 1+" -> "Adley Rutschman". Kalshi prefixes prop subtitles this way. */
+export function playerFromSubtitle(subtitle) {
+  if (!subtitle) return null;
+  const cut = String(subtitle).split(':')[0].trim();
+  return cut || null;
+}
