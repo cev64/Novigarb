@@ -1,0 +1,127 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Novigarb — Kalshi × Novig arbitrage</title>
+<link rel="stylesheet" href="/styles.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚖️</text></svg>">
+</head>
+<body>
+
+<header>
+  <div class="bar">
+    <div class="brand">Novigarb <span>Kalshi × Novig</span></div>
+    <div class="status">
+      <i class="dot" id="dot"></i>
+      <span id="statusText">connecting…</span>
+    </div>
+    <div class="spacer"></div>
+    <div class="stat-strip">
+      <div>fixtures matched<b id="statFixtures">—</b></div>
+      <div>markets compared<b id="statPairs">—</b></div>
+      <div>live arbs<b id="statArbs">—</b></div>
+      <div>scan<b id="statCycle">—</b></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="tabs">
+      <button class="tab active" data-view="arbs" id="tabArbs">Arbitrage</button>
+      <button class="tab" data-view="board" id="tabBoard">Odds feed</button>
+    </div>
+
+    <div class="field">
+      <label for="stake">Stake per side</label>
+      <input type="number" id="stake" value="100" min="1" step="5">
+    </div>
+
+    <div class="field">
+      <label for="anchor">Which leg gets it</label>
+      <select id="anchor">
+        <option value="larger">Larger leg</option>
+        <option value="kalshi">Kalshi leg</option>
+        <option value="novig">Novig leg</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="league">League</label>
+      <select id="league"><option value="">All leagues</option></select>
+    </div>
+
+    <div class="field">
+      <label for="market">Market</label>
+      <select id="market">
+        <option value="">All markets</option>
+        <option value="moneyline">Moneyline</option>
+        <option value="moneyline3">3-way</option>
+        <option value="spread">Spread</option>
+        <option value="total">Total</option>
+      </select>
+    </div>
+
+    <div class="field">
+      <label for="search">Search</label>
+      <input type="text" id="search" placeholder="team, market…">
+    </div>
+
+    <label class="toggle"><input type="checkbox" id="profitOnly"> Profitable only</label>
+    <label class="toggle"><input type="checkbox" id="liveOnly"> In-play only</label>
+  </div>
+</header>
+
+<main>
+  <div id="arbsView">
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>Net edge</th>
+          <th>Gross</th>
+          <th>League</th>
+          <th>Fixture</th>
+          <th>Market</th>
+          <th style="text-align:right">Buy on Kalshi</th>
+          <th style="text-align:right">Buy on Novig</th>
+          <th style="text-align:right">Stake</th>
+          <th style="text-align:right">Profit</th>
+          <th style="text-align:right">Best size</th>
+        </tr>
+      </thead>
+      <tbody id="arbsBody"></tbody>
+    </table>
+    </div>
+    <div class="empty" id="arbsEmpty">Waiting for the first scan…</div>
+  </div>
+
+  <div id="boardView" hidden>
+    <div class="table-wrap">
+    <table>
+      <thead>
+        <tr>
+          <th>League</th>
+          <th>Fixture</th>
+          <th>Market</th>
+          <th style="text-align:right">Kalshi ask</th>
+          <th style="text-align:right">Novig ask</th>
+          <th style="text-align:right">Best cross-book edge</th>
+        </tr>
+      </thead>
+      <tbody id="boardBody"></tbody>
+    </table>
+    </div>
+    <div class="empty" id="boardEmpty">Waiting for the first scan…</div>
+  </div>
+</main>
+
+<footer>
+  Prices are the current asks on each venue's public order book, walked to the size shown, and are net of
+  Kalshi's quadratic trading fee and Novig's live-trading taker fee (Novig charges nothing pre-game).
+  Quotes move fast and a leg can fill only partially — treat every row as a lead to verify on the venue, not a filled ticket.
+  <span id="boardNote"></span>
+</footer>
+
+<script src="/app.js"></script>
+</body>
+</html>

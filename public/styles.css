@@ -1,0 +1,337 @@
+:root {
+  --bg: #0b0e14;
+  --panel: #131722;
+  --panel-2: #1a1f2e;
+  --line: #232937;
+  --line-soft: #1c2230;
+  --text: #e4e8f1;
+  --muted: #8b93a7;
+  --dim: #5f6879;
+  --accent: #4c8dff;
+  --green: #22c98a;
+  --green-dim: #16916a;
+  --red: #ff5c72;
+  --amber: #f0b429;
+  --kalshi: #00d09c;
+  --novig: #a67dff;
+  --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+  font: 14px/1.45 -apple-system, BlinkMacSystemFont, "Segoe UI", Inter, system-ui, sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* ---------- top bar ---------- */
+
+header {
+  position: sticky;
+  top: 0;
+  z-index: 20;
+  background: rgba(11, 14, 20, 0.92);
+  backdrop-filter: blur(12px);
+  border-bottom: 1px solid var(--line);
+}
+
+.bar {
+  display: flex;
+  align-items: center;
+  gap: 18px;
+  padding: 12px 20px;
+  flex-wrap: wrap;
+}
+
+.brand {
+  display: flex;
+  align-items: baseline;
+  gap: 9px;
+  font-weight: 700;
+  font-size: 17px;
+  letter-spacing: -0.02em;
+}
+
+.brand span {
+  font-weight: 400;
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+.status {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: var(--dim);
+  flex: none;
+}
+
+.dot.live { background: var(--green); box-shadow: 0 0 0 3px rgba(34, 201, 138, 0.18); }
+.dot.stale { background: var(--amber); }
+.dot.down { background: var(--red); }
+
+.spacer { flex: 1; }
+
+.stat-strip {
+  display: flex;
+  gap: 20px;
+  font-size: 12px;
+  color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.stat-strip b {
+  display: block;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 600;
+}
+
+/* ---------- controls ---------- */
+
+.controls {
+  display: flex;
+  align-items: flex-end;
+  gap: 14px;
+  padding: 10px 20px 12px;
+  border-top: 1px solid var(--line-soft);
+  flex-wrap: wrap;
+}
+
+.field { display: flex; flex-direction: column; gap: 4px; }
+
+.field label {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+  font-weight: 600;
+}
+
+input[type="text"], input[type="number"], select {
+  background: var(--panel-2);
+  border: 1px solid var(--line);
+  color: var(--text);
+  border-radius: 7px;
+  padding: 7px 10px;
+  font: inherit;
+  font-size: 13px;
+  min-width: 96px;
+}
+
+input:focus, select:focus {
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(76, 141, 255, 0.15);
+}
+
+.tabs { display: flex; gap: 4px; background: var(--panel-2); padding: 3px; border-radius: 8px; }
+
+.tab {
+  border: 0;
+  background: transparent;
+  color: var(--muted);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 500;
+  padding: 6px 14px;
+  border-radius: 6px;
+  cursor: pointer;
+}
+
+.tab.active { background: var(--accent); color: #fff; }
+
+.toggle {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: var(--muted);
+  cursor: pointer;
+  user-select: none;
+  padding-bottom: 7px;
+}
+
+.toggle input { accent-color: var(--accent); width: 15px; height: 15px; }
+
+/* ---------- tables ---------- */
+
+main { padding: 18px 20px 60px; }
+
+.empty {
+  padding: 60px 20px;
+  text-align: center;
+  color: var(--dim);
+  font-size: 14px;
+}
+
+table { width: 100%; border-collapse: collapse; }
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: var(--bg);
+  text-align: left;
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.07em;
+  color: var(--dim);
+  font-weight: 600;
+  padding: 9px 12px;
+  border-bottom: 1px solid var(--line);
+  white-space: nowrap;
+}
+
+tbody td {
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--line-soft);
+  vertical-align: middle;
+}
+
+tbody tr.row { cursor: pointer; }
+tbody tr.row:hover { background: var(--panel); }
+tbody tr.open { background: var(--panel); }
+
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+.edge { font-family: var(--mono); font-weight: 700; text-align: right; white-space: nowrap; }
+.edge.pos { color: var(--green); }
+.edge.neg { color: var(--dim); }
+
+.fixture { font-weight: 600; }
+.sub { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+
+.pill {
+  display: inline-block;
+  padding: 2px 7px;
+  border-radius: 5px;
+  font-size: 10px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  white-space: nowrap;
+}
+
+.pill.league { background: var(--panel-2); color: var(--muted); }
+.pill.live { background: rgba(255, 92, 114, 0.16); color: var(--red); }
+.pill.kalshi { background: rgba(0, 208, 156, 0.14); color: var(--kalshi); }
+.pill.novig { background: rgba(166, 125, 255, 0.16); color: var(--novig); }
+
+.book-cell { display: flex; align-items: center; gap: 8px; justify-content: flex-end; }
+
+/* Long market names ("San Diego wins by over 2.5 runs") must not stretch the column;
+   the expanded bet slip shows the full label. */
+.book-cell .leg-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 138px;
+}
+
+.flash { animation: flash 1.1s ease-out; }
+@keyframes flash {
+  from { background: rgba(76, 141, 255, 0.22); }
+  to { background: transparent; }
+}
+
+/* ---------- bet slip ---------- */
+
+.slip td { background: #0e131d; padding: 0; border-bottom: 1px solid var(--line); }
+
+.slip-inner {
+  display: grid;
+  grid-template-columns: 1fr 1fr minmax(190px, 260px);
+  gap: 16px;
+  padding: 16px 18px;
+}
+
+.leg {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px 14px;
+  background: var(--panel);
+}
+
+.leg h4 {
+  margin: 0 0 9px;
+  font-size: 12px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.leg dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 4px 12px; font-size: 12.5px; }
+.leg dt { color: var(--muted); }
+.leg dd { margin: 0; text-align: right; font-family: var(--mono); font-variant-numeric: tabular-nums; }
+
+.summary {
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  padding: 12px 14px;
+  background: linear-gradient(160deg, rgba(76, 141, 255, 0.09), transparent);
+}
+
+.summary .big {
+  font-family: var(--mono);
+  font-size: 24px;
+  font-weight: 700;
+  letter-spacing: -0.02em;
+}
+
+.summary .big.pos { color: var(--green); }
+.summary .big.neg { color: var(--red); }
+
+.ticket { font-family: var(--mono); font-size: 11px; color: var(--dim); word-break: break-all; margin-top: 6px; }
+
+.note {
+  margin-top: 10px;
+  font-size: 11.5px;
+  color: var(--muted);
+  line-height: 1.5;
+}
+
+footer {
+  padding: 20px;
+  color: var(--dim);
+  font-size: 11.5px;
+  border-top: 1px solid var(--line-soft);
+  line-height: 1.6;
+}
+
+@media (max-width: 900px) {
+  .slip-inner { grid-template-columns: 1fr; }
+  .stat-strip { display: none; }
+}
+
+/* Column sizing: give fixture and market names room, keep price columns tight. */
+#arbsView th:nth-child(1) { width: 84px; }
+#arbsView th:nth-child(2) { width: 68px; }
+#arbsView th:nth-child(3) { width: 78px; }
+#arbsView th:nth-child(4) { min-width: 186px; }
+#arbsView th:nth-child(5) { min-width: 166px; }
+#arbsView th:nth-child(6), #arbsView th:nth-child(7) { width: 184px; }
+#arbsView th:nth-child(8), #arbsView th:nth-child(9) { width: 86px; }
+#arbsView th:nth-child(10) { width: 84px; }
+
+#boardView th:nth-child(1) { width: 88px; }
+#boardView th:nth-child(2) { min-width: 230px; }
+#boardView th:nth-child(3) { min-width: 210px; }
+#boardView th:nth-child(4), #boardView th:nth-child(5) { width: 118px; }
+#boardView th:nth-child(6) { width: 164px; }
+
+/* Never let the page itself scroll sideways — the table does instead. */
+.table-wrap { overflow-x: auto; }
