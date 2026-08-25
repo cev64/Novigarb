@@ -131,6 +131,9 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
   };
 
   // ---- Kalshi legs -------------------------------------------------------------
+  const homeName = ne.home.name;
+  const awayName = ne.away.name;
+
   const gameFixture = kg.byKind.game;
   if (gameFixture) {
     for (const m of gameFixture.markets) {
@@ -138,21 +141,26 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
       let key = null;
       let yesSide = null;
       let noSide = null;
-      let label = m.yesSubTitle || m.title;
+      // Label a leg by the outcome it pays on. A Kalshi NO on "New England wins" is a
+      // bet on Seattle, and must never read back as "New England".
+      let yesLabel = m.yesSubTitle || m.title;
+      let noLabel = `Not ${yesLabel}`;
 
       if (league.drawPossible) {
         if (isTie) {
           key = 'ML3:DRAW';
-          yesSide = 'YES';
-          noSide = 'NO';
-          label = 'Draw';
+          yesLabel = 'Draw';
+          noLabel = 'No draw';
         } else {
           const side = resolveSide({ name: m.yesSubTitle, abbr: m.suffix }, ne);
           if (!side) continue;
           key = `ML3:${side.toUpperCase()}`;
-          yesSide = 'YES';
-          noSide = 'NO';
+          const team = side === 'home' ? homeName : awayName;
+          yesLabel = `${team} to win`;
+          noLabel = `${team} not to win`;
         }
+        yesSide = 'YES';
+        noSide = 'NO';
       } else {
         if (isTie) continue;
         const side = resolveSide({ name: m.yesSubTitle, abbr: m.suffix }, ne);
@@ -160,14 +168,18 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
         key = 'ML';
         yesSide = side === 'home' ? 'HOME' : 'AWAY';
         noSide = COMPLEMENT[yesSide];
+        // Two-way: the NO side simply is the other team.
+        yesLabel = side === 'home' ? homeName : awayName;
+        noLabel = side === 'home' ? awayName : homeName;
       }
 
-      const meta = { type: league.drawPossible ? 'moneyline3' : 'moneyline', label };
+      const marketName = m.yesSubTitle || m.title;
+      const meta = { type: league.drawPossible ? 'moneyline3' : 'moneyline', label: yesLabel };
       if (m.yesAsk !== null) {
-        addLeg(key, meta, yesSide, { book: 'kalshi', side: 'yes', ticker: m.ticker, seriesTicker: gameFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label });
+        addLeg(key, meta, yesSide, { book: 'kalshi', side: 'yes', marketName, ticker: m.ticker, seriesTicker: gameFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: yesLabel });
       }
       if (m.noAsk !== null) {
-        addLeg(key, meta, noSide, { book: 'kalshi', side: 'no', ticker: m.ticker, seriesTicker: gameFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label });
+        addLeg(key, meta, noSide, { book: 'kalshi', side: 'no', marketName, ticker: m.ticker, seriesTicker: gameFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: noLabel });
       }
     }
   }
@@ -178,11 +190,12 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
       if (m.floorStrike === null) continue;
       const key = `TOT:${strikeKey(m.floorStrike)}`;
       const meta = { type: 'total', strike: m.floorStrike, label: `Total ${m.floorStrike}` };
+      const marketName = m.yesSubTitle || m.title;
       if (m.yesAsk !== null) {
-        addLeg(key, meta, 'OVER', { book: 'kalshi', side: 'yes', ticker: m.ticker, seriesTicker: totalFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: `Over ${m.floorStrike}` });
+        addLeg(key, meta, 'OVER', { book: 'kalshi', side: 'yes', marketName, ticker: m.ticker, seriesTicker: totalFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: `Over ${m.floorStrike}` });
       }
       if (m.noAsk !== null) {
-        addLeg(key, meta, 'UNDER', { book: 'kalshi', side: 'no', ticker: m.ticker, seriesTicker: totalFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: `Under ${m.floorStrike}` });
+        addLeg(key, meta, 'UNDER', { book: 'kalshi', side: 'no', marketName, ticker: m.ticker, seriesTicker: totalFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: `Under ${m.floorStrike}` });
       }
     }
   }
@@ -204,11 +217,18 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
       const yesSide = subject === 'home' ? 'HOME' : 'AWAY';
       const noSide = COMPLEMENT[yesSide];
 
+      // "Miami wins by over 3.5" is Miami -3.5; its NO is the opponent at +3.5.
+      const subjectName = subject === 'home' ? homeName : awayName;
+      const opponentName = subject === 'home' ? awayName : homeName;
+      const yesLabel = `${subjectName} -${m.floorStrike}`;
+      const noLabel = `${opponentName} +${m.floorStrike}`;
+
+      const marketName = m.yesSubTitle || m.title;
       if (m.yesAsk !== null) {
-        addLeg(key, meta, yesSide, { book: 'kalshi', side: 'yes', ticker: m.ticker, seriesTicker: spreadFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: m.yesSubTitle });
+        addLeg(key, meta, yesSide, { book: 'kalshi', side: 'yes', marketName, ticker: m.ticker, seriesTicker: spreadFixture.seriesTicker, price: m.yesAsk, topSize: m.yesAskSize, label: yesLabel });
       }
       if (m.noAsk !== null) {
-        addLeg(key, meta, noSide, { book: 'kalshi', side: 'no', ticker: m.ticker, seriesTicker: spreadFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: `Not: ${m.yesSubTitle}` });
+        addLeg(key, meta, noSide, { book: 'kalshi', side: 'no', marketName, ticker: m.ticker, seriesTicker: spreadFixture.seriesTicker, price: m.noAsk, topSize: m.noAskSize, label: noLabel });
       }
     }
   }
@@ -226,21 +246,27 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
     let key = null;
     let sideOfIndex0 = null;
     let meta = null;
+    // Labels for index 0 and index 1, when Novig's own description is not self-explanatory.
+    let labels = null;
 
     if (m.type === 'MONEY' && !league.drawPossible) {
       key = 'ML';
       sideOfIndex0 = 'HOME';
       meta = { type: 'moneyline', label: 'Moneyline' };
+      labels = [homeName, awayName];
     } else if (m.type === 'MONEYLINE_3_WAY_WIN' && league.drawPossible) {
       const side = m.competitor ? resolveSide({ name: m.competitor.name, abbr: m.competitor.symbol }, ne) : null;
       if (!side) continue;
       key = `ML3:${side.toUpperCase()}`;
       sideOfIndex0 = 'YES';
       meta = { type: 'moneyline3', label: m.competitor.name };
+      const team = side === 'home' ? homeName : awayName;
+      labels = [`${team} to win`, `${team} not to win`];
     } else if (m.type === 'MONEYLINE_3_WAY_DRAW' && league.drawPossible) {
       key = 'ML3:DRAW';
       sideOfIndex0 = 'YES';
       meta = { type: 'moneyline3', label: 'Draw' };
+      labels = ['Draw', 'No draw'];
     } else if (m.type === 'TOTAL' && m.strike !== null) {
       key = `TOT:${strikeKey(m.strike)}`;
       sideOfIndex0 = 'OVER';
@@ -255,7 +281,7 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
 
     const sideOfIndex1 = COMPLEMENT[sideOfIndex0];
 
-    for (const [outcome, side] of [[zero, sideOfIndex0], [one, sideOfIndex1]]) {
+    for (const [outcome, side, index] of [[zero, sideOfIndex0, 0], [one, sideOfIndex1, 1]]) {
       if (outcome.available === null) continue;
       addLeg(key, meta, side, {
         book: 'novig',
@@ -263,7 +289,7 @@ export function buildContracts(pair, novigMarketsByEvent, league) {
         outcomeId: outcome.id,
         siblingOutcomeId: outcome === zero ? one.id : zero.id,
         price: outcome.available,
-        label: outcome.description || outcome.type,
+        label: labels ? labels[index] : outcome.description || outcome.type,
         isLive: ne.isLive,
       });
     }

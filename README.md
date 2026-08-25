@@ -10,20 +10,21 @@ It runs entirely on your machine, needs no API keys, and installs nothing.
 
 ## Run it
 
-```bash
-node server.js
-```
+**Double-click `Start Novigarb.command`.** A Terminal window opens, the scanner starts, and
+your browser lands on the board once the first scan is in. Closing that window stops it.
 
-Then open **http://localhost:8787**.
+The first time, macOS may say the file is from an unidentified developer — right-click it,
+choose **Open**, then **Open** again. macOS remembers after that.
 
-Requires Node 18 or newer (`node --version`). There are no dependencies to install — the whole
-thing is standard library plus `fetch`.
-
-For a one-shot scan in the terminal instead of the browser:
+Prefer a terminal?
 
 ```bash
-npm run scan
+node server.js          # then open http://localhost:8787
+npm run scan            # or just print one scan and exit
 ```
+
+Requires Node 18 or newer (`node --version`); the launcher checks and tells you if it is
+missing. There are no dependencies to install — the whole thing is standard library plus `fetch`.
 
 ## What it does
 
@@ -39,18 +40,39 @@ Every few seconds it:
 The **Arbitrage** tab ranks every cross-book pair by net edge. The **Odds feed** tab is the raw
 two-column board — what Kalshi is asking, what Novig is asking, for every market they share.
 
-## Sizing
+## Sizing: one side fixed, the other sized to match
 
-One leg is pinned to a target stake — **$100 by default** — and the other is sized to match it
-contract-for-contract, which is what makes the payout identical whichever way the market settles.
-Change the amount in the header, and use *Which leg gets it* to choose:
+This is the part worth understanding, because it is how the board is meant to be read.
 
-- **Larger leg** (default) — the more expensive side gets the $100, so no single leg goes over it.
-- **Kalshi leg** / **Novig leg** — pin a specific venue.
+**One leg is fixed at $100.** The other is *not* $100 — it is whatever it takes to buy the
+same number of contracts on the other venue. That is what makes it a lock: equal contracts on
+both sides means the same payout whichever way the game goes, so the second figure is the one
+you actually have to look up.
 
-Size is capped by whatever the two books can actually fill. Click any row to open the bet slip:
-contracts, average fill price, slippage against the quoted top, stake, fee, and the market
-identifier to paste into each venue.
+A real row:
+
+```
+Pittsburgh Pirates @ San Diego Padres        Spread — San Diego Padres -2.5
+
+  KALSHI    $28.38    San Diego Padres -2.5   Buy YES · 129 @ 0.22
+                                              on "San Diego wins by over 2.5 runs"
+  NOVIG     $99.98    PIT +2.5      FIXED     129 @ 0.775
+```
+
+$99.98 on Novig is the fixed side. $28.38 on Kalshi is what 129 contracts cost there. Both
+sides return $129.00, so the whole position risks $129.14 including fees.
+
+Every leg names **the outcome it pays on**, not the market it happens to live in. Kalshi quotes
+a NO on "New England wins" — this shows that leg as *Seattle Seahawks*, with `Buy NO on New England`
+underneath, so you know both what you are backing and which button to press.
+
+Change the amount in the header. **Goes on** picks which side is held fixed:
+
+- **The pricier side** (default) — so no single leg goes over your number.
+- **The Kalshi side** / **The Novig side** — pin a specific venue.
+
+Size is capped by what the two books can actually fill. Click a row for the full slip: average
+fill, slippage against the quoted top, fee, and the market identifier to paste into each venue.
 
 ## Reading the numbers
 
@@ -153,6 +175,7 @@ Two details worth knowing if you extend this:
 ## Layout
 
 ```
+Start Novigarb.command   double-click launcher for macOS
 server.js            HTTP server, SSE stream, settings endpoint
 src/config.js        tunables, fee schedules, league -> Kalshi series map
 src/kalshi.js        Kalshi adapter: fixtures, order books, fee model
@@ -161,7 +184,7 @@ src/teams.js         team-name normalisation and similarity scoring
 src/match.js         fixture matching and canonical contract construction
 src/arb.js           book walking, lock pricing, optimal sizing
 src/engine.js        scan orchestration
-public/              dashboard
+public/              dashboard (no build step, no framework)
 scripts/scan-once.js one-shot terminal scan
 ```
 

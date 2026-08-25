@@ -105,7 +105,7 @@ export class Engine extends EventEmitter {
 
     await kalshi.loadSeries(seriesJobs.map((j) => j.seriesTicker));
 
-    const fetched = await mapLimit(seriesJobs, 6, async (job) => {
+    const fetched = await mapLimit(seriesJobs, 4, async (job) => {
       try {
         return { job, fixtures: await kalshi.fetchSeriesFixtures(job.seriesTicker, job.kind) };
       } catch (err) {

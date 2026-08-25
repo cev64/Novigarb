@@ -102,6 +102,8 @@ export function priceArb({ legA, legB, ladderA, ladderB, targetStake, anchor = '
 
   return {
     contracts,
+    // Which venue's leg carries the fixed wager, so the UI can label it.
+    anchoredBook: (anchorIsA ? legA : legB).book,
     payout: round(payout, 2),
     stake: round(stake, 2),
     fees: round(feeA + feeB, 4),
@@ -123,6 +125,9 @@ function buildLegView(leg, fill, fee, contracts) {
     book: leg.book,
     side: leg.side || null,
     label: leg.label,
+    // The venue's own name for the market being traded, which can differ from the
+    // outcome the leg pays on (a Kalshi NO on "New England" pays if Seattle wins).
+    marketName: leg.marketName || null,
     ticker: leg.ticker || null,
     marketId: leg.marketId || null,
     outcomeId: leg.outcomeId || null,

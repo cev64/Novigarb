@@ -4,123 +4,180 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Novigarb — Kalshi × Novig arbitrage</title>
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="/styles.css">
-<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'><text y='26' font-size='26'>⚖️</text></svg>">
+
+<!-- Drawn mark: two scales in balance. -->
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='%231A1918' stroke-width='2' stroke-linecap='round'%3E%3Cpath d='M12 3v18M5 7h14M7 7l-3 7h6zM17 7l-3 7h6z'/%3E%3C/svg%3E">
 </head>
 <body>
 
+<!-- Icon sprite: Lucide, uniform 1.75 stroke. -->
+<svg width="0" height="0" style="position:absolute" aria-hidden="true" focusable="false">
+  <defs>
+    <g id="i-search"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></g>
+    <g id="i-scale"><path d="M12 3v18M5 7h14M7 7l-3 7h6zM17 7l-3 7h6z"/></g>
+    <g id="i-alert"><path d="m21.7 18-8-14a2 2 0 0 0-3.4 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.7-3z"/><path d="M12 9v4"/><path d="M12 17h.01"/></g>
+    <g id="i-inbox"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.5 5.1 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.5-6.9A2 2 0 0 0 16.7 4H7.3a2 2 0 0 0-1.8 1.1z"/></g>
+    <g id="i-radar"><path d="M19.1 4.9A10 10 0 1 1 4.9 19.1"/><path d="M15.5 8.5A5 5 0 1 0 8.5 15.5"/><path d="M12 12 2 22"/></g>
+  </defs>
+</svg>
+
 <header>
-  <div class="bar">
-    <div class="brand">Novigarb <span>Kalshi × Novig</span></div>
-    <div class="status">
-      <i class="dot" id="dot"></i>
-      <span id="statusText">connecting…</span>
-    </div>
-    <div class="spacer"></div>
-    <div class="stat-strip">
-      <div>fixtures matched<b id="statFixtures">—</b></div>
-      <div>markets compared<b id="statPairs">—</b></div>
-      <div>live arbs<b id="statArbs">—</b></div>
-      <div>scan<b id="statCycle">—</b></div>
-    </div>
+  <div class="masthead">
+    <h1 class="wordmark">
+      Novigarb
+      <span class="rule-off">Kalshi × Novig</span>
+    </h1>
+
+    <p class="connection">
+      <span class="beacon" id="beacon" data-state="idle"></span>
+      <span id="connectionText" role="status" aria-live="polite">Opening the feed…</span>
+    </p>
+
+    <span class="spacer"></span>
+
+    <dl class="readout">
+      <div><dt>Fixtures</dt><dd id="statFixtures">—</dd></div>
+      <div><dt>Markets</dt><dd id="statMarkets">—</dd></div>
+      <div><dt>Locks</dt><dd id="statLocks">—</dd></div>
+      <div><dt>Scan</dt><dd id="statScan">—</dd></div>
+    </dl>
   </div>
 
-  <div class="controls">
-    <div class="tabs">
-      <button class="tab active" data-view="arbs" id="tabArbs">Arbitrage</button>
-      <button class="tab" data-view="board" id="tabBoard">Odds feed</button>
+  <div class="rail">
+    <div class="segmented" role="tablist" aria-label="View">
+      <button type="button" role="tab" id="tabArbs" data-view="arbs" aria-selected="true" aria-controls="viewArbs">Arbitrage</button>
+      <button type="button" role="tab" id="tabBoard" data-view="board" aria-selected="false" aria-controls="viewBoard">Odds feed</button>
     </div>
 
     <div class="field">
-      <label for="stake">Stake per side</label>
-      <input type="number" id="stake" value="100" min="1" step="5">
+      <label for="stake">Fixed wager</label>
+      <input type="number" id="stake" value="100" min="1" step="5" inputmode="decimal">
     </div>
 
     <div class="field">
-      <label for="anchor">Which leg gets it</label>
+      <label for="anchor">Goes on</label>
       <select id="anchor">
-        <option value="larger">Larger leg</option>
-        <option value="kalshi">Kalshi leg</option>
-        <option value="novig">Novig leg</option>
+        <option value="larger">The pricier side</option>
+        <option value="kalshi">The Kalshi side</option>
+        <option value="novig">The Novig side</option>
       </select>
     </div>
 
     <div class="field">
       <label for="league">League</label>
-      <select id="league"><option value="">All leagues</option></select>
+      <select id="league"><option value="">Every league</option></select>
     </div>
 
     <div class="field">
       <label for="market">Market</label>
       <select id="market">
-        <option value="">All markets</option>
+        <option value="">Every market</option>
         <option value="moneyline">Moneyline</option>
-        <option value="moneyline3">3-way</option>
+        <option value="moneyline3">Three-way</option>
         <option value="spread">Spread</option>
         <option value="total">Total</option>
       </select>
     </div>
 
-    <div class="field">
-      <label for="search">Search</label>
-      <input type="text" id="search" placeholder="team, market…">
+    <div class="field search-field">
+      <label for="search">Find</label>
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-search"/></svg>
+      <input type="text" id="search" placeholder="Team or market" autocomplete="off">
     </div>
 
-    <label class="toggle"><input type="checkbox" id="profitOnly"> Profitable only</label>
-    <label class="toggle"><input type="checkbox" id="liveOnly"> In-play only</label>
+    <div class="checks">
+      <label class="check"><input type="checkbox" id="profitOnly"> Locks only</label>
+      <label class="check"><input type="checkbox" id="liveOnly"> In play only</label>
+    </div>
   </div>
 </header>
 
+<p class="rubric">
+  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-scale"/></svg>
+  <span>One side is fixed at <b id="rubricStake">$100</b>. The other is whatever it takes to buy the same number of contracts, so both sides return the same money — that second figure is the one to read off.</span>
+</p>
+
+<div class="banner" id="banner" hidden>
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-alert"/></svg>
+  <span><b id="bannerTitle"></b><span id="bannerBody"></span></span>
+</div>
+
 <main>
-  <div id="arbsView">
-    <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>Net edge</th>
-          <th>Gross</th>
-          <th>League</th>
-          <th>Fixture</th>
-          <th>Market</th>
-          <th style="text-align:right">Buy on Kalshi</th>
-          <th style="text-align:right">Buy on Novig</th>
-          <th style="text-align:right">Stake</th>
-          <th style="text-align:right">Profit</th>
-          <th style="text-align:right">Best size</th>
-        </tr>
-      </thead>
-      <tbody id="arbsBody"></tbody>
-    </table>
+  <section id="viewArbs" role="tabpanel" aria-labelledby="tabArbs">
+    <div class="ledger-wrap">
+      <div class="scroller">
+        <table id="ledgerArbs">
+          <caption id="captionArbs">Cross-book locks, best net edge first</caption>
+          <colgroup>
+            <col class="c-edge"><col class="c-matchup"><col class="c-wager"><col class="c-wager"><col class="c-risk"><col class="c-profit">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Net edge</th>
+              <th scope="col">Matchup</th>
+              <th scope="col">Bet on Kalshi</th>
+              <th scope="col">Bet on Novig</th>
+              <th scope="col" class="right">At risk</th>
+              <th scope="col" class="right">Profit</th>
+            </tr>
+          </thead>
+          <tbody id="bodyArbs"></tbody>
+        </table>
+      </div>
+      <div class="blank" id="blankArbs" hidden>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-inbox"/></svg>
+        <h2 id="blankArbsTitle">Nothing on the board</h2>
+        <p id="blankArbsBody">No market matches these filters right now.</p>
+      </div>
     </div>
-    <div class="empty" id="arbsEmpty">Waiting for the first scan…</div>
-  </div>
+  </section>
 
-  <div id="boardView" hidden>
-    <div class="table-wrap">
-    <table>
-      <thead>
-        <tr>
-          <th>League</th>
-          <th>Fixture</th>
-          <th>Market</th>
-          <th style="text-align:right">Kalshi ask</th>
-          <th style="text-align:right">Novig ask</th>
-          <th style="text-align:right">Best cross-book edge</th>
-        </tr>
-      </thead>
-      <tbody id="boardBody"></tbody>
-    </table>
+  <section id="viewBoard" role="tabpanel" aria-labelledby="tabBoard" hidden>
+    <div class="ledger-wrap">
+      <div class="scroller">
+        <table id="ledgerBoard">
+          <caption id="captionBoard">Every proposition both books quote</caption>
+          <colgroup>
+            <col class="c-matchup"><col class="c-market"><col class="c-price"><col class="c-price"><col class="c-edge">
+          </colgroup>
+          <thead>
+            <tr>
+              <th scope="col">Matchup</th>
+              <th scope="col">Market</th>
+              <th scope="col" class="right">Kalshi asks</th>
+              <th scope="col" class="right">Novig asks</th>
+              <th scope="col" class="right">Best edge</th>
+            </tr>
+          </thead>
+          <tbody id="bodyBoard"></tbody>
+        </table>
+      </div>
+      <div class="blank" id="blankBoard" hidden>
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-radar"/></svg>
+        <h2>Nothing quoted here</h2>
+        <p>No market matches these filters right now.</p>
+      </div>
     </div>
-    <div class="empty" id="boardEmpty">Waiting for the first scan…</div>
-  </div>
+  </section>
+
+  <footer>
+    <p>
+      Prices are live asks from each venue's public order book, walked to the size shown and charged at
+      each book's real fee — Kalshi's quadratic taker fee at that series' own multiplier, and Novig's
+      live-trading fee, which is <b>nothing before kickoff</b>.
+    </p>
+    <p>
+      Quotes move between a scan and your click, and a lock with only one leg filled is just a bet.
+      Read every row as a lead to check on the venue, not a ticket already written.
+      <span id="boardNote"></span>
+    </p>
+  </footer>
 </main>
-
-<footer>
-  Prices are the current asks on each venue's public order book, walked to the size shown, and are net of
-  Kalshi's quadratic trading fee and Novig's live-trading taker fee (Novig charges nothing pre-game).
-  Quotes move fast and a leg can fill only partially — treat every row as a lead to verify on the venue, not a filled ticket.
-  <span id="boardNote"></span>
-</footer>
 
 <script src="/app.js"></script>
 </body>

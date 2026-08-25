@@ -1,83 +1,101 @@
-// Dashboard client: subscribes to the scan stream and renders the arbitrage table
-// and the cross-book odds feed.
+// Dashboard client. Subscribes to the scan stream, renders the lock ledger and the
+// cross-book odds feed, and keeps the sizing controls in step with the engine.
 
 const el = (id) => document.getElementById(id);
+
+const VIEWS = {
+  arbs: { tab: 'tabArbs', panel: 'viewArbs', body: 'bodyArbs', blank: 'blankArbs' },
+  board: { tab: 'tabBoard', panel: 'viewBoard', body: 'bodyBoard', blank: 'blankBoard' },
+};
 
 const state = {
   snapshot: null,
   view: 'arbs',
   expanded: new Set(),
-  lastEdge: new Map(),   // opportunity id -> last edge, used to flash changed rows
-  nextEdge: new Map(),   // rebuilt each render so the map tracks only current rows
-  filters: {
-    league: '',
-    market: '',
-    search: '',
-    profitOnly: false,
-    liveOnly: false,
-  },
+  lastEdge: new Map(),
+  filters: { league: '', market: '', search: '', profitOnly: false, liveOnly: false },
 };
 
 // ---------- formatting ----------
 
 const pct = (v) => `${(v * 100).toFixed(2)}%`;
+const signedPct = (v) => `${v > 0 ? '+' : ''}${pct(v)}`;
 const money = (v) => `$${Number(v).toFixed(2)}`;
+const count = (n) => Number(n).toLocaleString();
+
 const esc = (s) =>
   String(s ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 
-function startLabel(iso, isLive) {
-  if (isLive) return 'in play';
+function kickoff(iso, isLive) {
+  if (isLive) return 'In play';
   const t = Date.parse(iso);
   if (!Number.isFinite(t)) return '';
   const mins = Math.round((t - Date.now()) / 60000);
-  if (mins < 0) return 'started';
-  if (mins < 60) return `in ${mins}m`;
-  if (mins < 60 * 24) return `in ${Math.round(mins / 60)}h`;
+  if (mins < 0) return 'Under way';
+  if (mins < 60) return `${mins} min`;
+  if (mins < 60 * 24) return `${Math.round(mins / 60)} hr`;
   return new Date(t).toLocaleDateString(undefined, { month: 'short', day: 'numeric' });
 }
 
+const icon = (name, size = 15) =>
+  `<svg width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><use href="#i-${name}"/></svg>`;
+
 // ---------- connection ----------
 
-let stream;
 let lastMessageAt = 0;
 let adoptedSettings = false;
 
 function connect() {
-  stream = new EventSource('/api/stream');
+  const stream = new EventSource('/api/stream');
 
   stream.onmessage = (ev) => {
     lastMessageAt = Date.now();
     state.snapshot = JSON.parse(ev.data);
-    syncLeagueOptions();
-    // The engine keeps its settings across page loads; adopt them on first frame so a
-    // reload never shows a stake the scanner is not actually using.
+    syncLeagues();
+
+    // The engine holds its settings across reloads; adopt them on the first frame so
+    // the rail never advertises a stake the scanner is not actually using.
     if (!adoptedSettings) {
       adoptedSettings = true;
       el('stake').value = state.snapshot.settings.targetStake;
       el('anchor').value = state.snapshot.settings.anchor;
+      updateRubric();
     }
+
     render();
   };
 
-  stream.onerror = () => setStatus('down', 'reconnecting…');
+  stream.onerror = () => setConnection('down', 'Feed dropped — retrying');
 }
 
-function setStatus(kind, text) {
-  el('dot').className = `dot ${kind}`;
-  el('statusText').textContent = text;
+function setConnection(kind, text) {
+  el('beacon').dataset.state = kind;
+  el('connectionText').textContent = text;
 }
 
 setInterval(() => {
   if (!lastMessageAt) return;
   const age = Math.round((Date.now() - lastMessageAt) / 1000);
-  if (age > 30) setStatus('down', `no data for ${age}s`);
-  else if (age > 12) setStatus('stale', `updated ${age}s ago`);
-  else setStatus('live', `updated ${age}s ago`);
+  if (age > 30) setConnection('down', `Silent for ${age}s`);
+  else if (age > 14) setConnection('stale', `${age}s since last scan`);
+  else setConnection('live', age <= 1 ? 'Just scanned' : `Scanned ${age}s ago`);
 }, 1000);
+
+function showBanner(title, body) {
+  el('bannerTitle').textContent = title;
+  el('bannerBody').textContent = body;
+  el('banner').hidden = false;
+}
 
 // ---------- controls ----------
 
+function updateRubric() {
+  const amount = Number(el('stake').value) || 100;
+  el('rubricStake').textContent = money(amount).replace(/\.00$/, '');
+}
+
 function pushSettings() {
+  updateRubric();
   fetch('/api/settings', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -85,14 +103,15 @@ function pushSettings() {
       targetStake: Number(el('stake').value) || 100,
       anchor: el('anchor').value,
     }),
-  }).catch(() => {});
+  }).catch(() => showBanner('Could not update sizing. ', 'The scanner is still using the previous wager.'));
 }
 
 el('stake').addEventListener('change', pushSettings);
+el('stake').addEventListener('input', updateRubric);
 el('anchor').addEventListener('change', pushSettings);
 
-for (const [id, key] of [['league', 'league'], ['market', 'market']]) {
-  el(id).addEventListener('change', (e) => {
+for (const key of ['league', 'market']) {
+  el(key).addEventListener('change', (e) => {
     state.filters[key] = e.target.value;
     render();
   });
@@ -103,24 +122,25 @@ el('search').addEventListener('input', (e) => {
   render();
 });
 
-for (const [id, key] of [['profitOnly', 'profitOnly'], ['liveOnly', 'liveOnly']]) {
-  el(id).addEventListener('change', (e) => {
+for (const key of ['profitOnly', 'liveOnly']) {
+  el(key).addEventListener('change', (e) => {
     state.filters[key] = e.target.checked;
     render();
   });
 }
 
-for (const tab of document.querySelectorAll('.tab')) {
-  tab.addEventListener('click', () => {
-    state.view = tab.dataset.view;
-    for (const t of document.querySelectorAll('.tab')) t.classList.toggle('active', t === tab);
-    el('arbsView').hidden = state.view !== 'arbs';
-    el('boardView').hidden = state.view !== 'board';
+for (const [name, refs] of Object.entries(VIEWS)) {
+  el(refs.tab).addEventListener('click', () => {
+    state.view = name;
+    for (const [other, otherRefs] of Object.entries(VIEWS)) {
+      el(otherRefs.tab).setAttribute('aria-selected', String(other === name));
+      el(otherRefs.panel).hidden = other !== name;
+    }
     render();
   });
 }
 
-function syncLeagueOptions() {
+function syncLeagues() {
   const select = el('league');
   const seen = new Set();
   for (const o of state.snapshot.opportunities) seen.add(o.league);
@@ -131,43 +151,59 @@ function syncLeagueOptions() {
   if (current.join('|') === wanted.join('|')) return;
 
   const keep = select.value;
-  select.innerHTML = '<option value="">All leagues</option>';
+  select.innerHTML = '<option value="">Every league</option>';
   for (const name of wanted) {
-    const opt = document.createElement('option');
-    opt.value = name;
-    opt.textContent = name;
-    select.appendChild(opt);
+    const option = document.createElement('option');
+    option.value = name;
+    option.textContent = name;
+    select.appendChild(option);
   }
   select.value = keep;
 }
 
 // ---------- filtering ----------
 
-function matchesFilters(row, { type, live }) {
+function passes(row, type, live) {
   const f = state.filters;
   if (f.league && row.league !== f.league) return false;
   if (f.market && type !== f.market) return false;
   if (f.liveOnly && !live) return false;
-  if (f.search) {
-    const hay = `${row.fixture} ${row.marketLabel} ${row.league}`.toLowerCase();
-    if (!hay.includes(f.search)) return false;
-  }
+  if (f.search && !`${row.fixture} ${row.marketLabel} ${row.league}`.toLowerCase().includes(f.search)) return false;
   return true;
 }
 
 // ---------- render ----------
 
+function skeleton(columns, rows = 6) {
+  const cells = Array.from({ length: columns }, () => '<td><span class="bone"></span></td>').join('');
+  return Array.from({ length: rows }, () => `<tr>${cells}</tr>`).join('');
+}
+
 function render() {
   const snap = state.snapshot;
-  if (!snap) return;
 
-  el('statFixtures').textContent = snap.stats.matchedFixtures.toLocaleString();
-  el('statPairs').textContent = snap.stats.pairsScreened.toLocaleString();
-  el('statArbs').textContent = snap.stats.opportunities.toLocaleString();
-  el('statCycle').textContent = snap.cycleMs ? `${(snap.cycleMs / 1000).toFixed(1)}s` : '—';
-  el('boardNote').textContent = snap.boardTotal > snap.board.length
-    ? ` Showing the ${snap.board.length} tightest of ${snap.boardTotal} matched markets.`
-    : '';
+  if (!snap) {
+    el('bodyArbs').innerHTML = skeleton(6);
+    el('bodyBoard').innerHTML = skeleton(5);
+    return;
+  }
+
+  el('statFixtures').textContent = count(snap.stats.matchedFixtures);
+  el('statMarkets').textContent = count(snap.stats.pairsScreened);
+  el('statLocks').textContent = count(snap.stats.opportunities);
+  el('statLocks').dataset.flag = snap.stats.opportunities > 0 ? 'on' : 'off';
+  el('statScan').textContent = snap.cycleMs ? `${(snap.cycleMs / 1000).toFixed(1)}s` : '—';
+
+  el('boardNote').textContent =
+    snap.boardTotal > snap.board.length
+      ? ` Showing the ${count(snap.board.length)} tightest of ${count(snap.boardTotal)} matched markets.`
+      : '';
+
+  if (snap.errors?.length) {
+    showBanner('Part of the last scan failed. ', `${snap.errors[0]} — those markets are missing from this pass.`);
+  } else {
+    el('banner').hidden = true;
+  }
 
   if (state.view === 'arbs') renderArbs(snap);
   else renderBoard(snap);
@@ -175,112 +211,152 @@ function render() {
 
 function renderArbs(snap) {
   const rows = snap.opportunities.filter(
-    (o) => matchesFilters(o, { type: o.marketType, live: o.isLive }) && (!state.filters.profitOnly || o.profit > 0)
+    (o) => passes(o, o.marketType, o.isLive) && (!state.filters.profitOnly || o.profit > 0)
   );
 
-  const body = el('arbsBody');
-  el('arbsEmpty').hidden = rows.length > 0;
-  el('arbsEmpty').textContent = state.filters.profitOnly
-    ? 'No profitable arbitrage right now. Untick “Profitable only” to see how close the books are.'
-    : 'No markets match these filters.';
+  const blank = el('blankArbs');
+  blank.hidden = rows.length > 0;
+  if (!rows.length) {
+    const filtered = state.filters.league || state.filters.market || state.filters.search || state.filters.liveOnly;
+    if (state.filters.profitOnly) {
+      el('blankArbsTitle').textContent = 'No locks at the moment';
+      el('blankArbsBody').textContent =
+        'Both books are pricing everything above break-even once fees are in. Untick “Locks only” to see how close they are running.';
+    } else if (filtered) {
+      el('blankArbsTitle').textContent = 'Nothing under these filters';
+      el('blankArbsBody').textContent = 'Widen the league, market or search and the board will fill back in.';
+    } else {
+      el('blankArbsTitle').textContent = 'Nothing on the board';
+      el('blankArbsBody').textContent = 'The scanner found no fixture quoted on both venues in this pass.';
+    }
+  }
 
-  state.nextEdge = new Map();
-  body.innerHTML = rows.map(renderArbRow).join('');
-  state.lastEdge = state.nextEdge;
+  const nextEdge = new Map();
+  const body = el('bodyArbs');
+  body.innerHTML = rows.map((o) => arbRow(o, nextEdge)).join('');
+  state.lastEdge = nextEdge;
 
-  for (const tr of body.querySelectorAll('tr.row')) {
-    tr.addEventListener('click', () => {
-      const id = tr.dataset.id;
-      if (state.expanded.has(id)) state.expanded.delete(id);
-      else state.expanded.add(id);
-      render();
+  for (const tr of body.querySelectorAll('tr.entry')) {
+    tr.addEventListener('click', () => toggle(tr.dataset.id));
+    tr.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' || e.key === ' ') {
+        e.preventDefault();
+        toggle(tr.dataset.id);
+      }
     });
   }
 }
 
-function renderArbRow(o) {
-  const kalshiLeg = o.legs.find((l) => l.book === 'kalshi');
-  const novigLeg = o.legs.find((l) => l.book === 'novig');
-  const open = state.expanded.has(o.id);
-
-  const prev = state.lastEdge.get(o.id);
-  const changed = prev !== undefined && Math.abs(prev - o.netRoi) > 1e-6;
-  state.nextEdge.set(o.id, o.netRoi);
-
-  const main = `
-    <tr class="row ${open ? 'open' : ''} ${changed ? 'flash' : ''}" data-id="${esc(o.id)}">
-      <td class="edge ${o.profit > 0 ? 'pos' : 'neg'}">${o.profit > 0 ? '+' : ''}${pct(o.netRoi)}</td>
-      <td class="num" style="color:${o.grossEdge > 0 ? 'var(--muted)' : 'var(--dim)'}">${pct(o.grossEdge)}</td>
-      <td><span class="pill league">${esc(o.league)}</span></td>
-      <td>
-        <div class="fixture">${esc(o.fixture)}</div>
-        <div class="sub">${o.isLive ? '<span class="pill live">Live</span> ' : ''}${esc(startLabel(o.startsAt, o.isLive))}</div>
-      </td>
-      <td>${esc(o.marketLabel)}</td>
-      <td class="num">
-        <div class="book-cell">
-          <span class="pill kalshi">K</span>
-          <span class="leg-label" title="${esc(kalshiLeg.label)}">${esc(kalshiLeg.label)}</span>
-          <b>${kalshiLeg.avgPrice}</b>
-        </div>
-        <div class="sub">${esc(kalshiLeg.american)}</div>
-      </td>
-      <td class="num">
-        <div class="book-cell">
-          <span class="pill novig">N</span>
-          <span class="leg-label" title="${esc(novigLeg.label)}">${esc(novigLeg.label)}</span>
-          <b>${novigLeg.avgPrice}</b>
-        </div>
-        <div class="sub">${esc(novigLeg.american)}</div>
-      </td>
-      <td class="num">${money(o.totalCost)}</td>
-      <td class="num" style="color:${o.profit > 0 ? 'var(--green)' : 'var(--dim)'}">${money(o.profit)}</td>
-      <td class="num">${o.bestSize ? `${o.bestSize.toLocaleString()}c<div class="sub">${money(o.bestProfit)}</div>` : '—'}</td>
-    </tr>`;
-
-  return open ? main + renderSlip(o) : main;
+function toggle(id) {
+  if (state.expanded.has(id)) state.expanded.delete(id);
+  else state.expanded.add(id);
+  render();
 }
 
-function renderSlip(o) {
-  const legHtml = (leg) => `
-    <div class="leg">
-      <h4><span class="pill ${leg.book}">${leg.book === 'kalshi' ? 'Kalshi' : 'Novig'}</span> ${esc(leg.label)}</h4>
-      <dl>
-        <dt>Buy</dt><dd>${leg.contracts.toLocaleString()} contracts</dd>
-        <dt>Avg price</dt><dd>${leg.avgPrice} (${esc(leg.american)})</dd>
-        <dt>Quoted top</dt><dd>${leg.quotedPrice}</dd>
-        <dt>Slippage</dt><dd>${leg.slippage ? leg.slippage.toFixed(4) : '0.0000'}</dd>
-        <dt>Stake</dt><dd>${money(leg.stake)}</dd>
-        <dt>Fee</dt><dd>${leg.fee ? money(leg.fee) : '$0.00 (pre-game)'}</dd>
-      </dl>
-      <div class="ticket">${esc(leg.ticker || leg.outcomeId || '')}</div>
-    </div>`;
+function wagerCell(leg, anchored) {
+  const venue = leg.book === 'kalshi' ? 'Kalshi' : 'Novig';
+  const action = leg.side ? `Buy ${leg.side.toUpperCase()} · ` : '';
+  // A Kalshi NO on "New England" pays if Seattle wins, so when the market traded is not
+  // the outcome itself, name it on its own line rather than burying it mid-sentence.
+  const onMarket =
+    leg.marketName && leg.marketName !== leg.label
+      ? `<div class="wager-price muted" title="${esc(leg.marketName)}">on ${esc(leg.marketName)}</div>`
+      : '';
+  return `
+    <td>
+      <div class="wager">
+        <div class="wager-head">
+          <span class="venue ${leg.book}">${venue}</span>
+          ${anchored ? '' : '<span class="wager-price">sized to match</span>'}
+        </div>
+        <div class="wager-amount">${money(leg.stake)}${anchored ? '<span class="pinned">Fixed</span>' : ''}</div>
+        <div class="wager-pick" title="${esc(leg.label)}">${esc(leg.label)}</div>
+        <div class="wager-price">${action}${count(leg.contracts)} @ ${leg.avgPrice} · ${esc(leg.american)}</div>
+        ${onMarket}
+      </div>
+    </td>`;
+}
 
-  const kalshiLeg = o.legs.find((l) => l.book === 'kalshi');
-  const novigLeg = o.legs.find((l) => l.book === 'novig');
+function arbRow(o, nextEdge) {
+  const kalshi = o.legs.find((l) => l.book === 'kalshi');
+  const novig = o.legs.find((l) => l.book === 'novig');
+  const open = state.expanded.has(o.id);
+  const isLock = o.profit > 0;
+
+  const previous = state.lastEdge.get(o.id);
+  nextEdge.set(o.id, o.netRoi);
+
+  const row = `
+    <tr class="entry" data-id="${esc(o.id)}" tabindex="0" aria-expanded="${open}">
+      <td>
+        <div class="figure ${isLock ? 'gain' : 'flat'}">${signedPct(o.netRoi)}</div>
+        <div class="gloss mono">${pct(o.grossEdge)} gross</div>
+      </td>
+      <td>
+        <div class="matchup">${esc(o.fixture)}</div>
+        <div class="market-line">${esc(o.marketLabel)}</div>
+        <div class="gloss">
+          <span class="tag">${esc(o.league)}</span>
+          <span class="tag ${o.isLive ? 'now' : ''}">${esc(kickoff(o.startsAt, o.isLive))}</span>
+        </div>
+      </td>
+      ${wagerCell(kalshi, o.anchoredBook === 'kalshi')}
+      ${wagerCell(novig, o.anchoredBook === 'novig')}
+      <td class="right">
+        <div class="figure">${money(o.totalCost)}</div>
+        <div class="gloss mono">returns ${money(o.payout)}</div>
+      </td>
+      <td class="right">
+        <div class="figure ${isLock ? 'gain' : 'flat'}">${money(o.profit)}</div>
+        <div class="gloss mono">${o.bestSize ? `best ${count(o.bestSize)} @ ${money(o.bestProfit)}` : 'no size clears'}</div>
+      </td>
+    </tr>`;
+
+  return open ? row + slipRow(o, kalshi, novig) : row;
+}
+
+function slipRow(o, kalshi, novig) {
+  const isLock = o.profit > 0;
+
+  const card = (leg, anchored) => `
+    <div class="slip-card">
+      <h3><span class="venue ${leg.book}">${leg.book === 'kalshi' ? 'Kalshi' : 'Novig'}</span> ${esc(leg.label)}</h3>
+      <dl>
+        <dt>Wager</dt><dd>${money(leg.stake)} ${anchored ? '<em>fixed</em>' : '<em>sized</em>'}</dd>
+        <dt>Action</dt><dd>${leg.side ? `Buy ${leg.side.toUpperCase()}` : 'Back this outcome'}</dd>
+        ${leg.marketName && leg.marketName !== leg.label ? `<dt>On market</dt><dd>${esc(leg.marketName)}</dd>` : ''}
+        <dt>Contracts</dt><dd>${count(leg.contracts)}</dd>
+        <dt>Average fill</dt><dd>${leg.avgPrice} <em>${esc(leg.american)}</em></dd>
+        <dt>Quoted top</dt><dd>${leg.quotedPrice}</dd>
+        <dt>Slippage</dt><dd>${(leg.slippage || 0).toFixed(4)}</dd>
+        <dt>Fee</dt><dd>${leg.fee ? money(leg.fee) : '$0.00 <em>pre-game</em>'}</dd>
+      </dl>
+      <p class="ticket">${esc(leg.ticker || leg.outcomeId || '')}</p>
+    </div>`;
 
   return `
     <tr class="slip">
-      <td colspan="10">
-        <div class="slip-inner">
-          ${legHtml(kalshiLeg)}
-          ${legHtml(novigLeg)}
-          <div class="summary">
-            <div class="big ${o.profit > 0 ? 'pos' : 'neg'}">${money(o.profit)}</div>
-            <dl style="margin-top:8px;display:grid;grid-template-columns:auto 1fr;gap:4px 12px;font-size:12.5px">
-              <dt style="color:var(--muted)">Total stake</dt><dd style="text-align:right;font-family:var(--mono)">${money(o.stake)}</dd>
-              <dt style="color:var(--muted)">Fees</dt><dd style="text-align:right;font-family:var(--mono)">${money(o.fees)}</dd>
-              <dt style="color:var(--muted)">At risk</dt><dd style="text-align:right;font-family:var(--mono)">${money(o.totalCost)}</dd>
-              <dt style="color:var(--muted)">Returns</dt><dd style="text-align:right;font-family:var(--mono)">${money(o.payout)}</dd>
-              <dt style="color:var(--muted)">Net ROI</dt><dd style="text-align:right;font-family:var(--mono)">${pct(o.netRoi)}</dd>
+      <td colspan="6">
+        <div class="slip-grid">
+          ${card(kalshi, o.anchoredBook === 'kalshi')}
+          ${card(novig, o.anchoredBook === 'novig')}
+          <div class="slip-card verdict">
+            <p class="caption-line">${isLock ? 'Locked profit' : 'Shortfall'}</p>
+            <div class="headline ${isLock ? 'gain' : 'flat'}">${money(o.profit)}</div>
+            <dl>
+              <dt>Staked</dt><dd>${money(o.stake)}</dd>
+              <dt>Fees</dt><dd>${money(o.fees)}</dd>
+              <dt>At risk</dt><dd>${money(o.totalCost)}</dd>
+              <dt>Returns</dt><dd>${money(o.payout)}</dd>
+              <dt>Net edge</dt><dd>${signedPct(o.netRoi)}</dd>
             </dl>
-            <div class="note">
-              ${o.contracts.toLocaleString()} contracts a side returns ${money(o.payout)} whichever way it settles.
+            <p class="prose">
+              ${count(o.contracts)} contracts a side returns ${money(o.payout)} whichever way it settles.
               ${o.bestSize > 0
-                ? `Best size on current depth is ${o.bestSize.toLocaleString()} contracts for ${money(o.bestProfit)}.`
-                : `Gross edge is ${pct(o.grossEdge)}, but fees of ${money(o.fees)} turn it negative at every size.`}
-              Fixture matched at ${(o.matchScore * 100).toFixed(0)}% confidence.
-            </div>
+                ? `Current depth pays best at ${count(o.bestSize)} contracts, for ${money(o.bestProfit)}.`
+                : `The ${pct(o.grossEdge)} gross edge does not survive ${money(o.fees)} of fees at any size.`}
+              Fixtures paired at ${(o.matchScore * 100).toFixed(0)}% confidence.
+            </p>
           </div>
         </div>
       </td>
@@ -288,27 +364,36 @@ function renderSlip(o) {
 }
 
 function renderBoard(snap) {
-  const rows = snap.board.filter((b) => matchesFilters(b, { type: b.marketType, live: b.isLive }));
+  const rows = snap.board.filter((b) => passes(b, b.marketType, b.isLive));
+  el('blankBoard').hidden = rows.length > 0;
 
-  el('boardEmpty').hidden = rows.length > 0;
-  el('boardEmpty').textContent = 'No markets match these filters.';
-
-  el('boardBody').innerHTML = rows
+  el('bodyBoard').innerHTML = rows
     .map(
       (b) => `
       <tr>
-        <td><span class="pill league">${esc(b.league)}</span></td>
         <td>
-          <div class="fixture">${esc(b.fixture)}</div>
-          <div class="sub">${b.isLive ? '<span class="pill live">Live</span> ' : ''}${esc(startLabel(b.startsAt, b.isLive))}</div>
+          <div class="matchup">${esc(b.fixture)}</div>
+          <div class="gloss">
+            <span class="tag">${esc(b.league)}</span>
+            <span class="tag ${b.isLive ? 'now' : ''}">${esc(kickoff(b.startsAt, b.isLive))}</span>
+          </div>
         </td>
-        <td>${esc(b.marketLabel)}</td>
-        <td class="num">${b.kalshi.price}<div class="sub">${esc(b.kalshi.american)}</div></td>
-        <td class="num">${b.novig.price}<div class="sub">${esc(b.novig.american)}</div></td>
-        <td class="edge ${b.bestEdge > 0 ? 'pos' : 'neg'}">${b.bestEdge === null ? '—' : pct(b.bestEdge)}</td>
+        <td><div class="market-line">${esc(b.marketLabel)}</div></td>
+        <td class="right">
+          <div class="figure">${b.kalshi.price}</div>
+          <div class="gloss mono">${esc(b.kalshi.american)}</div>
+        </td>
+        <td class="right">
+          <div class="figure">${b.novig.price}</div>
+          <div class="gloss mono">${esc(b.novig.american)}</div>
+        </td>
+        <td class="right">
+          <div class="figure ${b.bestEdge > 0 ? 'gain' : 'flat'}">${b.bestEdge === null ? '—' : signedPct(b.bestEdge)}</div>
+        </td>
       </tr>`
     )
     .join('');
 }
 
+render();
 connect();
